@@ -61,12 +61,14 @@ clNR=c('720575940626885124','720575940634371941','720575940608082990','720575940
 clNL=c('720575940628333788','720575940620424472','720575940626869403','720575940632011420',
        '720575940620123613','720575940637319134','720575940619688688','720575940637175349')
 clN=c(clNR,clNL)
+aIpg13=strsplit(readLines("C:\\Users\\LabAdmin\\Downloads\\root_ids_aipg1_aipg2_aipg3.txt"),',')[[1]]
+pC1d='720575940620356545'
 
 ### TARGET NEUROPIL
 DNfw=strsplit(readLines("C:\\Users\\LabAdmin\\Downloads\\root_ids_class_equal_descending.txt"),',')[[1]]
 
 ### VECTOR OF THRESHOLDS PER LAYER
-Thr=c(10,15)
+Thr=c(10,10)
 ### NUMBER OF LAYERS TO TRAVERSE 
 nLayers=2
 
@@ -76,9 +78,11 @@ nLayers=2
 # }
 
 ### SET INPUT NEUROPIL NEURONS
-inpN=clN
+# inpN=clN
 # inpN=clNR
 # inpN=clNL
+inpN=list(clN,aIpg13,pC1d)
+inpN_N=c('CLs','aIPg1-3','pC1d')
 
 
 ### ASSEMBLE ADJACENCY MATRIX BY FAFBSEG'S FUNCTION OR DOWNSTREAM CONNECTIONS
@@ -87,10 +91,34 @@ byConn=TRUE
 ### PATH LENGTHS TO CONSIDER (LEAVE EMPTY TO CONSIDER ALL)
 pL=c(1:2)
 
+### RETURN OVERLAPPING TARGET NEURONS
+intersN=FALSE
+
 ### MAIN
 
-sConnAll=getDownstreamsNRFAFB(inpN,nLayers,Thr)
-sConnA=sConnAll[[1]]$s_Conn
+sConnAll=list()
+DN=list()
+outN=c()
+itr=1
+for (i in inpN) {
+  sConnAll[[itr]]=getDownstreamsNRFAFB(i,nLayers,Thr)
+  DN[[itr]]=sConnAll[[itr]][[1]]$s_Conn
+  itr=itr+1
+}
+
+if (intersN==TRUE){
+  outN=DN[[1]]
+  
+  for(i in DN){
+    outN=intersect(outN[which(outN%in%DNfw)],
+                   i[which(i%in%DNfw)])
+  }
+} else {
+  
+outN=unlist(DN)[which(unlist(DN)%in%DNfw)]
+}
+
+sConnA=unique(c(unlist(inpN),unique(unlist(DN))))
 
 if (byConn==TRUE) {
 
@@ -98,17 +126,23 @@ adjFW=matrix(0,length(sConnA),length(sConnA))
 rownames(adjFW)=sConnA
 colnames(adjFW)=sConnA
 
-
-for (k in 2:length(sConnAll)) {
-    for (d in 1:nrow(sConnAll[[k]])) {
-      adjFW[which(rownames(adjFW)%in%sConnAll[[k]]$query[d]),which(colnames(adjFW)%in%sConnAll[[k]]$post_id[d])]=sConnAll[[k]]$weight[d]
+itr=1
+for (i in sConnAll) {
+  for (k in 2:length(i)) {
+    for (d in 1:nrow(i[[k]])) {
+    if (length(inpN[[itr]])>1){
+      adjFW[which(rownames(adjFW)%in%i[[k]]$query[d]),which(colnames(adjFW)%in%i[[k]]$post_id[d])]=i[[k]]$weight[d]
+    } else {
+      adjFW[which(rownames(adjFW)%in%inpN[[itr]]),which(colnames(adjFW)%in%i[[k]]$post_id[d])]=i[[k]]$weight[d]
+     }
+    }
   }
+  itr=itr+1
 }
-
 
 } else {
 
-adjFW=flywire_adjacency_matrix(c(inpN,sConnA))
+adjFW=flywire_adjacency_matrix(c(unlist(inpN),sConnA))
 }
 
 G=graph_from_adjacency_matrix(adjFW)
@@ -123,19 +157,25 @@ wtt=c()
 wt=list()
 wtc=c()
 dpt=list()
-outN=rownames(adjFW)[which(rownames(adjFW)%in%DNfw)]
+
+
+
 itr=1
 
 if (length(pL)==0){
-for (k in which(rownames(adjFW)%in%inpN)){
-  allP=shortest_paths(G,k,to=which(rownames(adjFW)%in%DNfw))
+for (k in which(rownames(adjFW)%in%unlist(inpN))){
+  # allP=shortest_paths(G,k,to=which(rownames(adjFW)%in%outN))
+   allP=get.shortest.paths(G,k,mode='out')
+  # allP=shortest.paths(G,v=c(which(rownames(adjFW)%in%unlist(inpN)),which(rownames(adjFW)%in%outN)),algorithm = 'unweighted')
+  
   allP=list(allP$vpath)
 for (i in allP[[1]]) {
   fromt=c()
   tot=c()
   wtt=c()
   dptt=c()
-  if (rownames(adjFW)[i[length(i)]]%in%outN) {
+  if (length(i)>0){
+  if (TRUE%in%(rownames(adjFW)[i]%in%outN)) {
       for (n in 1:(length(i)-1)){
       fromt=c(fromt,rownames(adjFW)[i[n]])
       tot=c(tot,colnames(adjFW)[i[n+1]])
@@ -150,18 +190,21 @@ for (i in allP[[1]]) {
    wt[[itr]]=wtt
    itr=itr+1
   } 
+    }
   }
 }
 } else {
-  for (k in which(rownames(adjFW)%in%inpN)){
-    allP=shortest_paths(G,k,to=which(rownames(adjFW)%in%DNfw))
+  for (k in which(rownames(adjFW)%in%unlist(inpN))){
+    #allP=shortest_paths(G,k,to=which(rownames(adjFW)%in%outN))
+    allP=get.shortest.paths(G,k,mode='out')
     allP=list(allP$vpath)
     for (i in allP[[1]]) {
       fromt=c()
       tot=c()
       wtt=c()
       dptt=c()
-      if (rownames(adjFW)[i[length(i)]]%in%outN) {
+      if (length(i)>0){
+      if (TRUE%in%(rownames(adjFW)[i]%in%outN)) {
        if ((length(i)-1)%in%pL) { 
          for (n in 1:(length(i)-1)){
           
@@ -177,7 +220,8 @@ for (i in allP[[1]]) {
       to[[itr]]=tot
       wt[[itr]]=wtt
       itr=itr+1
-        } 
+       } 
+        }
       }
     }
   } 
@@ -224,13 +268,17 @@ for (j in allPathsO){
   distComp=distCompt
 }
 effDF=data.frame(matrix(0,nrow=length(inpN),ncol=(length(unique((outN))))))
-rownames(effDF)=c(unique((unlist(inpN))))
+rownames(effDF)=inpN_N
 colnames(effDF)=unique((outN))
 
-
-
-for (i in 1:nrow(distComp)) {
-  effDF[which(rownames(effDF)==distComp[i,3]),which(colnames(effDF)==distComp[i,2])]=sum(effDF[which(rownames(effDF)==distComp[i,3]),which(colnames(effDF)==distComp[i,2])],1/distComp[i,1])
+itr=1
+for (j in inpN) {
+  for (i in 1:nrow(distComp)) {
+  if (distComp[i,3]%in%j){
+  effDF[itr,which(colnames(effDF)==distComp[i,2])]=sum(effDF[which(rownames(effDF)==distComp[i,3]),which(colnames(effDF)==distComp[i,2])],1/distComp[i,1])
+    }
+  }
+  itr=itr+1
 }
 
 effDF=1/effDF
@@ -264,7 +312,7 @@ try(visNetwork(nodes, edges,width = '100%',height = ) %>%
       visHierarchicalLayout(levelSeparation = 500) %>%
       visPhysics(stabilization = FALSE,repulsion = FALSE))
 
-write.csv(effDF,"C:\\Users\\LabAdmin\\Desktop\\Connectomics\\Deven Connectomics\\effDFallDNsLRFAFBpL12v2.csv", row.names = TRUE)
+write.csv(effDF,"C:\\Users\\LabAdmin\\Desktop\\Connectomics\\Deven Connectomics\\effDFallDNsRFAFBpL12v2.csv", row.names = TRUE)
 
 View(effDF)
 
